@@ -15,6 +15,7 @@ def TD_iid(MRP: Markov_Reward_Process,
            theta0: np.array = None,
            estimate_variance: bool = True,
            save_original: bool = False,
+           decompose_error: bool = False,
            seed: int = 42):
     '''
     Function to run the averaged TD learning algorithm
@@ -27,6 +28,9 @@ def TD_iid(MRP: Markov_Reward_Process,
     theta0: the initial iteration, default to 0
     estimate_variance: whether to include variance estimator
     save_original: whether to save the original TD iterations
+    decompose_error: whether to decompose TD estimation error into 
+                     initialization error, sampling error and intersection error
+                     (details in README.md)
     seed: random seed to guarantee reproduction
     '''
     assert alpha >= 0.5 and alpha <= 1, "alpha must be within [0.5,1]!"
@@ -48,6 +52,20 @@ def TD_iid(MRP: Markov_Reward_Process,
 
     if save_original:
         saved_thetas = np.zeros((n_save, N_trials, MRP.d))
+
+    if decompose_error:
+        Xts = np.transpose(thetas) - MRP.theta_star.reshape(-1,1)
+        Xt_bars = Xts
+        Zts = np.zeros((MRP.d, N_trials))
+        Zt_bars = Zts
+
+        saved_Xt_bars = np.zeros((n_save, N_trials, MRP.d))
+        saved_Yt_bars = np.zeros((n_save, N_trials, MRP.d))
+        saved_Zt_bars = np.zeros((n_save, N_trials, MRP.d))
+        if save_original:
+            saved_Xts = np.zeros((n_save, N_trials, MRP.d))
+            saved_Yts = np.zeros((n_save, N_trials, MRP.d))
+            saved_Zts = np.zeros((n_save, N_trials, MRP.d))
     
     if estimate_variance:
         A_bars = np.zeros((N_trials, MRP.d, MRP.d))
@@ -74,8 +92,20 @@ def TD_iid(MRP: Markov_Reward_Process,
         TD_err = TD_err.reshape((-1,1))
         
         # update theta
-        thetas = thetas + initial_stepsize * (t ** (-alpha)) * TD_err * MRP.Phi[s1]
+        stepsize = initial_stepsize * (t ** (-alpha))
+        thetas = thetas + stepsize * TD_err * MRP.Phi[s1]
         theta_bars = theta_bars + (thetas - theta_bars)/ t 
+
+        if decompose_error:
+            # update initialization error
+            Xts = np.dot((np.identity(MRP.d) - stepsize * MRP.A), Xts)
+            Xt_bars = Xt_bars + (Xts - Xt_bars) / t
+
+            # update sampling error
+            TD_err_star = MRP.r[s1] - np.sum((MRP.Phi[s1] - MRP.gamma * MRP.Phi[s2]) * np.tile(MRP.theta_star.T, (N_trials,1)), axis = 1)
+            TD_err_star = TD_err_star.reshape((1,-1))
+            Zts = np.dot((np.identity(MRP.d) - stepsize * MRP.A), Zts) + stepsize * TD_err_star * MRP.Phi[s1].reshape((MRP.d,-1))
+            Zt_bars = Zt_bars + (Zts - Zt_bars) / t
 
         if estimate_variance:
             # update A, AA, Ab, bb
@@ -103,6 +133,13 @@ def TD_iid(MRP: Markov_Reward_Process,
             if save_original:
                 saved_thetas[i] = thetas
 
+            if decompose_error:
+                saved_Xt_bars[i] = np.transpose(Xt_bars)
+                saved_Zt_bars[i] = np.transpose(Zt_bars)
+                if save_original:
+                    saved_Xts[i] = np.transpose(Xts)
+                    saved_Zts[i] = np.transpose(Zts)                
+
             if estimate_variance:
                 saved_A_bars[i] = A_bars
                 saved_AA_bars[i] = AA_bars
@@ -113,10 +150,19 @@ def TD_iid(MRP: Markov_Reward_Process,
                'save_iter': save_iter,
                'initial_stepsize': initial_stepsize,
                'alpha': alpha,
-               'saved_theta_bars': saved_theta_bars}
+               'saved_delta_bars': saved_theta_bars - MRP.theta_star.reshape(1,1,-1)}
 
     if save_original:
-        results['saved_thetas'] = saved_thetas
+        results['saved_deltas'] = saved_thetas - MRP.theta_star.reshape(1,1,-1)
+
+    if decompose_error:
+        results['saved_Xt_bars'] = saved_Xt_bars
+        results['saved_Zt_bars'] = saved_Zt_bars
+        results['saved_Yt_bars'] = saved_Xt_bars - saved_Zt_bars - results['saved_delta_bars']
+        if save_original:
+            results['saved_Xts'] = saved_Xts
+            results['saved_Zts'] = saved_Zts
+            results['saved_Yts'] = saved_Xts - saved_Zts - results['saved_deltas']
 
     if estimate_variance:
         # generate variance estimators
