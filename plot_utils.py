@@ -51,14 +51,14 @@ def one_trial_CIs(MRP_params,
            
     plt.subplots_adjust(wspace = 0.4)
 
-def estimate_norm_quantiles(V, q, nsamples = 10 ** 6):
+def estimate_norm_quantiles(V, q, nsamples = 10 ** 6, seed = 42):
     d = V.shape[0]
     rng = np.random.default_rng(seed)
     X = rng.multivariate_normal(mean=np.zeros(d), cov=V, size=nsamples)
     L2_norms = np.sum(X ** 2, axis = 1)
     return np.quantile(L2_norms,q)
 
-def plot_L2_norm_quantiles(results,q, label):
+def plot_L2_norm_quantiles(results, q, label):
     L2_errs = np.sum(results['saved_delta_bars'] ** 2, axis = 2)
     L2_quantiles = np.quantile(L2_errs, q, axis = 1)
     plt.plot(results['save_iter'],L2_quantiles, label = label)
@@ -72,3 +72,6 @@ def compare_emp_asy(MRP_params, results, label):
     dists = np.max(abs(emp_cdf - est_cdf), axis = (1,2))
     plt.plot(results['save_iter'], dists, label = label)
 
+def plot_variance_estimation_errors(MRP_params, results, label):
+    F_errs = np.sum((results['saved_Lambda_hats'] - MRP_params['Lambda_star'][np.newaxis,np.newaxis,:,:])** 2, axis = (2,3))
+    plt.plot(results['save_iter'],np.mean(F_errs, axis = 1), label = label)
