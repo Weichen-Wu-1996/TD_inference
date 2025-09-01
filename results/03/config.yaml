@@ -11,5 +11,7 @@ iid_experiment:
     N_trials: 10000
     initial_stepsize: 5
     alpha: 0.75
-    estimate_variance: False
+    estimate_variance: True
+    save_original: True
+    decompose_error: True
     

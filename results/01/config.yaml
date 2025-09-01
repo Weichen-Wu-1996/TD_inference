@@ -11,4 +11,5 @@ iid_experiment:
     N_trials: 10000
     initial_stepsize: 5
     alpha: 0.667
-    
+    save_original: True
+    decompose_error: True
