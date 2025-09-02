@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
+from matplotlib.ticker import PercentFormatter
 
 def compare_histograms(MRP_params,
                        results,
@@ -50,6 +51,56 @@ def one_trial_CIs(MRP_params,
         axs[dim].set_xscale('log')
            
     plt.subplots_adjust(wspace = 0.4)
+
+def plot_CI_cover_rates(MRP_params, 
+                        results, 
+                        confidence = 0.95, 
+                        n_samples = 10 ** 3,
+                        xmin = 1024, 
+                        ymin = 0.8):
+
+    # Individual confidence intervals
+    cv = norm.ppf((1+confidence) / 2)
+    abs_delta_bars = np.abs(results['saved_delta_bars']) # (n_save, N_trials, d)
+    individual_cover = abs_delta_bars < cv * np.sqrt(np.diagonal(results['saved_Lambda_hats'], 
+                                                                 axis1 = -1, 
+                                                                 axis2 = -2) / results['save_iter'][:,np.newaxis,np.newaxis])
+    individual_cover_rates = np.mean(individual_cover, axis = 1)
+
+    # Simultaneous confidence interval
+    n_save, N_trials, d = results['saved_delta_bars'].shape
+    samples = np.random.normal(size = (d, n_samples))
+    Lambda_hats = results['saved_Lambda_hats'] + 1e-8 * np.eye(d)[np.newaxis,np.newaxis,:,:]
+    Ls = np.linalg.cholesky(Lambda_hats)
+    samples = Ls @ samples #(n_save, N_trials, d, n_samples)
+    inf_norms = np.max(np.abs(samples), axis = 2) # (n_save, N_trials, n_samples)
+    cvs = np.quantile(inf_norms, q = confidence, axis = 2) # (n_save, N_trials)
+    simultaneous_cover = np.max(abs_delta_bars, axis = 2) < (cvs / np.sqrt(results['save_iter'][:,np.newaxis]))
+    simultaneous_cover_rates = np.mean(simultaneous_cover, axis = 1)
+    
+
+    plt.figure(dpi = 300)
+    plt.rcParams['text.usetex'] = True
+
+    for dim in range(MRP_params['d']):
+        plt.plot(results['save_iter'],
+                 individual_cover_rates[:,dim],
+                 label = r'$\mathcal{C}_{' + str(dim+1) + '}$')
+
+    plt.plot(results['save_iter'], simultaneous_cover_rates, label = r'$\mathcal{C}$')
+
+    plt.plot(results['save_iter'], 
+             confidence * np.ones_like(results['save_iter']), 
+             linestyle = 'dotted', 
+             color = 'black',
+             label = 'target')
+    plt.legend()
+    plt.xlim([xmin, results['save_iter'][-1]])
+    plt.ylim([ymin,1])
+    plt.xscale('log')
+    plt.xlabel(r'$T$')
+    plt.ylabel('Coverage rate')
+    plt.gca().yaxis.set_major_formatter(PercentFormatter(xmax=1))
 
 def estimate_norm_quantiles(V, q, nsamples = 10 ** 6, seed = 42):
     d = V.shape[0]

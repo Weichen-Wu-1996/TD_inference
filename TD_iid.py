@@ -86,6 +86,7 @@ def TD_iid(MRP: Markov_Reward_Process,
     # vectorize the stationary distribution of (s,s')
     muP = np.reshape(MRP.mu.reshape((MRP.S,1)) * MRP.P,(-1,))
 
+    print('TD iterations:')
     for t in tqdm(range(1,T)):
         # sampling
         samples = np.random.choice(MRP.S ** 2, p = muP, size = N_trials)
