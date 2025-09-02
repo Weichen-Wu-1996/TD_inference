@@ -24,4 +24,4 @@ Rerun the command for all the directories under `results/` to generate all the d
 
 ### Reproduce the plots
 
-TODO: update and upload the jupyter notebook for reproducing the plots
+Use the `reproduce_plots.ipynb` notebook to reproduce the plots in the paper.
