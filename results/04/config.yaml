@@ -12,4 +12,6 @@ iid_experiment:
     initial_stepsize: 5
     alpha: 0.8
     estimate_variance: False
+    save_original: True
+    decompose_error: True
     
