@@ -1,7 +1,6 @@
 import numpy as np
 import random
 from tqdm import tqdm
-import json
 import yaml
 import click
 import os
@@ -28,6 +27,7 @@ def TD_iid(MRP: Markov_Reward_Process,
     alpha: the polynomial decay parameter, must be in [0.5,1]
     theta0: the initial iteration, default to 0
     estimate_variance: whether to include variance estimator
+    use_outer_product: whether to use outer product for variance estimation
     save_original: whether to save the original TD iterations
     decompose_error: whether to decompose TD estimation error into 
                      initialization error, sampling error and intersection error
