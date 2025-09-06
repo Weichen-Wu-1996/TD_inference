@@ -14,6 +14,7 @@ def TD_iid(MRP: Markov_Reward_Process,
            alpha: float,
            theta0: np.array = None,
            estimate_variance: bool = True,
+           use_outer_product: bool = True,
            save_original: bool = False,
            decompose_error: bool = False,
            seed: int = 42):
@@ -74,14 +75,17 @@ def TD_iid(MRP: Markov_Reward_Process,
     
     if estimate_variance:
         A_bars = np.zeros((N_trials, MRP.d, MRP.d))
-        AA_bars = np.zeros((N_trials, MRP.d ** 2, MRP.d ** 2))
-        Ab_bars = np.zeros((N_trials, MRP.d ** 2, MRP.d))
-        bb_bars = np.zeros((N_trials, MRP.d ** 2))
-
         saved_A_bars = np.zeros((n_save, N_trials, MRP.d, MRP.d))
-        saved_AA_bars = np.zeros((n_save, N_trials, MRP.d ** 2, MRP.d ** 2))
-        saved_Ab_bars = np.zeros((n_save, N_trials, MRP.d ** 2, MRP.d))
-        saved_bb_bars = np.zeros((n_save, N_trials, MRP.d ** 2))
+        saved_Gamma_hats = np.zeros((n_save, N_trials, MRP.d, MRP.d))
+        saved_Lambda_hats = np.zeros((n_save, N_trials, MRP.d, MRP.d))
+
+        if use_outer_product:
+            AA_bars = np.zeros((N_trials, MRP.d ** 2, MRP.d ** 2))
+            Ab_bars = np.zeros((N_trials, MRP.d ** 2, MRP.d))
+            bb_bars = np.zeros((N_trials, MRP.d ** 2))
+
+        else:
+            state_cnts = np.zeros((N_trials, MRP.S, MRP.S))
 
     # vectorize the stationary distribution of (s,s')
     muP = np.reshape(MRP.mu.reshape((MRP.S,1)) * MRP.P,(-1,))
@@ -123,23 +127,30 @@ def TD_iid(MRP: Markov_Reward_Process,
             
 
         if estimate_variance:
-            # update A, AA, Ab, bb
+            
+            # update A_bar
             Ats = (MRP.Phi[s1])[:,:,np.newaxis] * (MRP.Phi[s1] - MRP.gamma * MRP.Phi[s2])[:,np.newaxis,:]
             bts = MRP.r[s1][:,np.newaxis] * MRP.Phi[s1]
             A_bars += (Ats - A_bars) / t
-            
-            Ats_exp = Ats[:, :, np.newaxis, :, np.newaxis]
-            AAs = (Ats_exp * Ats_exp.transpose(0, 2, 1, 4, 3)).reshape(N_trials, MRP.d ** 2, MRP.d ** 2)
-            AA_bars += (AAs - AA_bars) / t
-            
-            Ats_exp = Ats[:,:,np.newaxis,:]
-            bts_exp = bts[:,np.newaxis,:,np.newaxis]
-            Abs = (Ats_exp * bts_exp).reshape(N_trials, MRP.d ** 2, MRP.d)
-            Ab_bars += (Abs - Ab_bars) / t
-            
-            bts_exp = bts[:,:,np.newaxis]
-            bbs = (bts_exp * bts_exp.transpose(0,2,1)).reshape(N_trials, MRP.d ** 2)
-            bb_bars += (bbs - bb_bars) / t
+
+            if use_outer_product:
+                # update estimates of the outer products
+                Ats_exp = Ats[:, :, np.newaxis, :, np.newaxis]
+                AAs = (Ats_exp * Ats_exp.transpose(0, 2, 1, 4, 3)).reshape(N_trials, MRP.d ** 2, MRP.d ** 2)
+                AA_bars += (AAs - AA_bars) / t
+                
+                Ats_exp = Ats[:,:,np.newaxis,:]
+                bts_exp = bts[:,np.newaxis,:,np.newaxis]
+                Abs = (Ats_exp * bts_exp).reshape(N_trials, MRP.d ** 2, MRP.d)
+                Ab_bars += (Abs - Ab_bars) / t
+                
+                bts_exp = bts[:,:,np.newaxis]
+                bbs = (bts_exp * bts_exp.transpose(0,2,1)).reshape(N_trials, MRP.d ** 2)
+                bb_bars += (bbs - bb_bars) / t
+
+            else:
+                # update the state counts
+                np.add.at(state_cnts, (np.arange(N_trials), s1, s2), 1)
 
         if t in save_iter:
             i = save_iter.index(t)
@@ -158,10 +169,34 @@ def TD_iid(MRP: Markov_Reward_Process,
                     saved_Zts[i] = Zts               
 
             if estimate_variance:
-                saved_A_bars[i] = A_bars
-                saved_AA_bars[i] = AA_bars
-                saved_Ab_bars[i] = Ab_bars
-                saved_bb_bars[i] = bb_bars            
+                saved_A_bars[i] = A_bars 
+                if use_outer_product:
+                    theta_outer = theta_bars[:, :, None] * theta_bars[:, None, :]    
+                    theta_outer_vec = theta_outer.reshape(N_trials, MRP.d ** 2)  
+                    
+                    # batched products
+                    term1 = np.einsum('nij,nj->ni', AA_bars, theta_outer_vec)    
+                    term2 = np.einsum('nij,nj->ni', Ab_bars, theta_bars)           
+                    
+                    # combine
+                    Gamma_hat_vec = term1 - 2*term2 + bb_bars                      
+                    Gamma_hats = Gamma_hat_vec.reshape(N_trials, MRP.d, MRP.d)  
+
+                else:
+                    np.testing.assert_array_equal(np.sum(state_cnts, axis = (1,2)), t * np.ones(N_trials))
+                    Phi_diff = MRP.Phi[:, None, :] - MRP.gamma * MRP.Phi[None, :, :]   # (S, S, d)
+                    tmp_TD_errs = theta_bars @ Phi_diff.reshape(MRP.S*MRP.S, MRP.d).T  # (N_trials, S*S)
+                    tmp_TD_errs = tmp_TD_errs.reshape(N_trials, MRP.S, MRP.S) - MRP.r[None,:,None]
+                    weights = state_cnts * (tmp_TD_errs**2)   # (N_trials, S, S)
+                    weights = np.sum(weights, axis = 2) # (N_trials, S)
+                    phi_outer = np.einsum('si,sj->sij', MRP.Phi, MRP.Phi)   # (S, d, d)
+                    Gamma_hats = np.einsum('ns,sij->nij', weights, phi_outer) / t   # (N_trials, d, d)
+                    
+                saved_Gamma_hats[i] = Gamma_hats    
+                for j in range(N_trials):
+                    A_bar_inv = np.linalg.inv(A_bars[j] + 1e-8 * np.identity(MRP.d))
+                    Lambda_hat = A_bar_inv @ Gamma_hats[j] @ A_bar_inv.T
+                    saved_Lambda_hats[i][j] = Lambda_hat
 
     results = {'T': T,
                'save_iter': save_iter,
@@ -181,23 +216,7 @@ def TD_iid(MRP: Markov_Reward_Process,
             results['saved_Yts'] = saved_Yts
             results['saved_Zts'] = saved_Zts
 
-    if estimate_variance:
-        # generate variance estimators
-        saved_Gamma_hats = np.zeros((n_save, N_trials, MRP.d, MRP.d))
-        saved_Lambda_hats = np.zeros((n_save, N_trials, MRP.d, MRP.d))
-        for i in range(n_save):
-            for j in range(N_trials):
-                theta_bar = saved_theta_bars[i][j]
-                A_bar = saved_A_bars[i][j]
-                AA_bar = saved_AA_bars[i][j]
-                Ab_bar = saved_Ab_bars[i][j]
-                bb_bar = saved_bb_bars[i][j]
-                Gamma_hat = np.dot(AA_bar, np.kron(theta_bar,theta_bar)) - 2 * np.dot(Ab_bar,theta_bar) + bb_bar
-                Gamma_hat = np.reshape(Gamma_hat,(MRP.d, MRP.d))
-                saved_Gamma_hats[i][j] = Gamma_hat
-                A_bar_inv = np.linalg.inv(A_bar + 1e-8 * np.identity(MRP.d))
-                Lambda_hat = np.dot(np.dot(A_bar_inv,Gamma_hat),np.transpose(A_bar_inv))
-                saved_Lambda_hats[i][j] = Lambda_hat
+    if estimate_variance:     
         results.update({'saved_A_bars': saved_A_bars,
                         'saved_Gamma_hats': saved_Gamma_hats,
                         'saved_Lambda_hats': saved_Lambda_hats})
