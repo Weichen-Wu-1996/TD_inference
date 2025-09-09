@@ -2,24 +2,73 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 from matplotlib.ticker import PercentFormatter
+from matplotlib.animation import FuncAnimation
 
 def compare_histograms(MRP_params,
                        results,
                        iter_index,
-                       xlabel):
-    emp_hist = plt.hist(results['saved_delta_bars'][iter_index,:,0] * np.sqrt(results['save_iter'][iter_index]), 
+                       xlabel,
+                       dim = 0,
+                       nbins = 50):
+    sigma = np.sqrt(MRP_params['Lambda_star'][dim,dim])
+    xlim = 5 * sigma
+    emp_hist = plt.hist(results['saved_delta_bars'][iter_index,:,dim] * np.sqrt(results['save_iter'][iter_index]), 
                         density = True, 
-                        bins = 50, 
-                        range = (-1,1), 
+                        bins = nbins, 
+                        range = (-xlim,xlim), 
                         label = 'Empirical')
-    pts = np.linspace(-1, 1, 1000)
-    asy_hist = norm.pdf(pts, scale = np.sqrt(MRP_params['Lambda_star'][0,0]))
+    pts = np.linspace(-xlim, xlim, 1000)
+    asy_hist = norm.pdf(pts, scale = sigma)
     plt.plot(pts,asy_hist,'-',color = 'red', label = 'Asymptotic')
-    plt.xlim(-1,1)
+    plt.xlim(-xlim,xlim)
     plt.xlabel(xlabel)
     plt.ylabel('Probability density')
     plt.legend()
 
+def animate_histograms(MRP_params,
+                       results,
+                       Tlabels,
+                       dim,
+                       fname,
+                       nbins = 50):
+    sigma = np.sqrt(MRP_params['Lambda_star'][dim,dim])
+    xlim = 5 * sigma
+
+    fig, ax = plt.subplots()
+    bins = np.linspace(-xlim, xlim, nbins)
+
+    # All bars set to 0
+    counts = np.zeros(len(bins) - 1)
+    _, _, patches = ax.hist([], bins=bins, 
+                            alpha=0.7, 
+                            color="steelblue", 
+                            edgecolor="black",
+                            label = "Empirical")
+    for patch in patches:
+        patch.set_height(0) 
+
+    # Asymptotic distribution
+    pts = np.linspace(-xlim, xlim, 1000)
+    asy_hist = norm.pdf(pts, scale = sigma)
+    line, = ax.plot(pts,asy_hist,'-',color = 'red', label = 'Asymptotic')
+    
+    ax.set_xlim(-xlim, xlim)
+    ax.legend(loc="upper right")
+    
+    def update(frame):
+        counts, _ = np.histogram(results['saved_delta_bars'][frame,:,dim] * np.sqrt(results['save_iter'][frame]), 
+                                 bins = bins,
+                                 density = True)
+        for count, patch in zip(counts, patches):
+            patch.set_height(count)
+    
+        ax.set_title(r"$\sqrt{T}(\bar{\Delta}_T)_{%d},T=%s$" % (dim+1,Tlabels[frame]))
+        return patches
+    
+    ani = FuncAnimation(fig, update, frames=20, interval=100, blit=False)
+    ani.save(fname, writer="pillow", fps=10)
+
+    
 def one_trial_CIs(MRP_params, 
                   results, 
                   sample_index = 3,
