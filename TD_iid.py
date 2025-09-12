@@ -51,27 +51,12 @@ def TD_iid(MRP: Markov_Reward_Process,
         thetas = np.zeros((N_trials,MRP.d))
     else:
         thetas = np.tile(theta0, (N_trials,1))
-    theta_bars = thetas
+    theta_bars = thetas.copy()
     saved_theta_bars = np.zeros((n_save, N_trials, MRP.d))
 
     if save_original:
         saved_thetas = np.zeros((n_save, N_trials, MRP.d))
 
-    if decompose_error:
-        Xts = thetas - MRP.theta_star.reshape((1,-1))
-        Xt_bars = Xts
-        Yts = np.zeros((N_trials, MRP.d))
-        Yt_bars = Yts
-        Zts = np.zeros((N_trials, MRP.d))
-        Zt_bars = Zts
-
-        saved_Xt_bars = np.zeros((n_save, N_trials, MRP.d))
-        saved_Yt_bars = np.zeros((n_save, N_trials, MRP.d))
-        saved_Zt_bars = np.zeros((n_save, N_trials, MRP.d))
-        if save_original:
-            saved_Xts = np.zeros((n_save, N_trials, MRP.d))
-            saved_Yts = np.zeros((n_save, N_trials, MRP.d))
-            saved_Zts = np.zeros((n_save, N_trials, MRP.d))
     
     if estimate_variance:
         A_bars = np.zeros((N_trials, MRP.d, MRP.d))
