@@ -1,10 +1,15 @@
 ## Statistical Inference for Policy Evaluation with Temporal Difference Learning
 
-<p float="left">
+<p float="center">
   <img src="plots/moving_histograms1.gif" width="300"/>
   <img src="plots/moving_histograms2.gif" width="300"/>
   <img src="plots/moving_histograms3.gif" width="300"/>
 </p>
+
+<p float="center">
+  <img src="plots/3d_ci_animation.gif" width="600"/>
+</p>
+
 
 Use this repository to reproduce and explore the numerical simulations in the paper [Statistical Inference for Policy Evaluation with Temporal Difference Learning](https://arxiv.org/pdf/2410.16106), by Wu, et al., 2025.
 
